@@ -1,24 +1,28 @@
-# Lovable UI Flow (38)
+# Speed Money — Frontend UI Flow
 
-Build the ui and navigation flow only not the entire application
+Speed Money loan management interactive UI prototype for customers, administrators, and collection agents.
 
-This project was built with [Lovable](https://lovable.dev).
+## Portals Included
+- **Customer App**: Mobile experience with onboarding, loan application, EMI tracking, payments, and receipts.
+- **Admin Portal**: Comprehensive desktop portal for loan officers and administrators to manage customers, applications, loans, EMIs, collections, and reports.
+- **Collection Agent App**: Mobile flow for on-field collection agents with cash collection, customer OTP verification, signatures, and cash ledger.
 
-## Build with Lovable
+## Architecture
+- Prototype screens are registered in maps in `src/screens/{customer,admin,agent}.tsx` and served by dynamic routes per portal (`/app/$screen`, `/admin/$screen`, `/agent/$screen`).
+- Built with React 19, TanStack Start & Router, and Tailwind CSS.
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/149e028b-6bde-46d6-b097-f10d66b546ae).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+## Getting Started
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+npm install
 npm run dev
+```
+
+The application will be accessible at `http://localhost:8080/`.
+
+## Build & Preview
+
+```sh
+npm run build
+npm run preview
 ```
