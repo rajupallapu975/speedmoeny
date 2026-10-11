@@ -1,5 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Capacitor } from "@capacitor/core";
+import { App as CapApp } from "@capacitor/app";
 import {
   createRootRoute,
   createRoute,
@@ -9,7 +11,6 @@ import {
   Link,
   useNavigate,
 } from "@tanstack/react-router";
-import { Layers, X, ChevronRight, Smartphone } from "lucide-react";
 import { customerScreens } from "./screens/customer";
 
 const queryClient = new QueryClient();
@@ -37,60 +38,45 @@ function NotFound() {
   );
 }
 
-function ScreenSwitcher() {
-  const [open, setOpen] = useState(false);
-  const nav = useNavigate();
-
-  return (
-    <aside aria-label="Prototype Screen Navigation" className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] right-3.5 z-40 md:bottom-6 md:right-6">
-      {open ? (
-        <div className="flex max-h-[80vh] w-80 flex-col rounded-2xl border border-border bg-card p-4 shadow-2xl animate-in fade-in zoom-in-95">
-          <div className="flex items-center justify-between border-b border-border pb-3">
-            <div className="flex items-center gap-2">
-              <Smartphone className="h-4 w-4 text-primary" />
-              <h2 className="text-xs font-bold uppercase tracking-wider text-navy">Customer Screens (30)</h2>
-            </div>
-            <button
-              onClick={() => setOpen(false)}
-              className="grid h-7 w-7 place-items-center rounded-lg hover:bg-muted text-muted-foreground hover:text-navy"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="mt-2 flex-1 space-y-1 overflow-y-auto pr-1 text-xs">
-            {Object.entries(customerScreens).map(([k, v]) => (
-              <button
-                key={k}
-                onClick={() => {
-                  nav({ to: "/app/$screen", params: { screen: k } });
-                  setOpen(false);
-                }}
-                className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left font-medium text-navy hover:bg-soft hover:text-primary transition"
-              >
-                <span>{v.t}</span>
-                <span className="font-mono text-[10px] text-muted-foreground">{k}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <button
-          onClick={() => setOpen(true)}
-          className="flex items-center gap-2 rounded-full border border-border bg-card/95 px-3.5 py-2 text-xs font-bold text-navy shadow-lg backdrop-blur hover:bg-soft transition"
-        >
-          <Layers className="h-4 w-4 text-primary" />
-          <span>All Screens</span>
-        </button>
-      )}
-    </aside>
-  );
-}
-
 function RootLayout() {
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let lastBack = 0;
+
+    const subPromise = CapApp.addListener("backButton", () => {
+      const path = window.location.pathname;
+      const isRootScreen =
+        path === "/" ||
+        path.includes("/welcome") ||
+        path.includes("/home") ||
+        path.endsWith("/app") ||
+        path.endsWith("/app/");
+
+      if (isRootScreen) {
+        const now = Date.now();
+        if (now - lastBack < 2000) {
+          CapApp.exitApp();
+        } else {
+          lastBack = now;
+        }
+      } else {
+        if (window.history.length > 1) {
+          window.history.back();
+        } else {
+          router.navigate({ to: "/app/$screen", params: { screen: "home" } });
+        }
+      }
+    });
+
+    return () => {
+      subPromise.then((h) => h.remove());
+    };
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <Outlet />
-      <ScreenSwitcher />
     </QueryClientProvider>
   );
 }

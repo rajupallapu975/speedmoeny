@@ -11,6 +11,8 @@ import {
 } from "@/components/sm/ui";
 import { customer, products, emis, payments, inr } from "@/data/mock";
 import { cn } from "@/lib/utils";
+import { Keyboard } from "@capacitor/keyboard";
+import { sendOtp, verifyOtp, resendOtp, subscribeAuth, getAuthState, logout, checkSession, type AuthState } from "@/lib/auth";
 
 const navItems = [
   { s: "home", label: "Home", icon: Home, link: CLink },
@@ -27,25 +29,37 @@ const Go = ({ s, children, v = "primary" as const }: { s: string; children: Reac
 /* 01 */
 function Splash() {
   const nav = useNavigate();
-  useEffect(() => { const t = setTimeout(() => nav({ to: "/app/$screen", params: { screen: "welcome" } }), 900); return () => clearTimeout(t); }, [nav]);
+  useEffect(() => {
+    const session = checkSession();
+    const target = session.valid ? "home" : "welcome";
+    const t = setTimeout(() => nav({ to: "/app/$screen", params: { screen: target } }), 900);
+    return () => clearTimeout(t);
+  }, [nav]);
   return (
     <MobileShell className="bg-brand pb-0">
-      <CLink s="welcome" className="flex min-h-[760px] flex-col items-center justify-center gap-6 text-center">
+      <div className="flex min-h-[760px] flex-col items-center justify-center gap-6 text-center">
         <div className="animate-in fade-in zoom-in-95 duration-700"><Logo size="lg" light /></div>
-        <p className="text-sm font-medium tracking-[0.25em] text-primary-foreground/80">FAST • SIMPLE • SECURE</p>
-        <Loader2 className="mt-10 h-5 w-5 animate-spin text-primary-foreground/60" />
-      </CLink>
+        <p className="text-xs font-bold tracking-[0.2em] text-primary-foreground/90 uppercase">YOUR FINANCE. OUR EXPERTISE. YOUR GROWTH.</p>
+        <Loader2 className="mt-8 h-5 w-5 animate-spin text-primary-foreground/60" />
+      </div>
     </MobileShell>
   );
 }
 
 /* 02 */
 function Welcome() {
+  const nav = useNavigate();
+  useEffect(() => {
+    const session = checkSession();
+    if (session.valid) {
+      nav({ to: "/app/$screen", params: { screen: "home" } });
+    }
+  }, [nav]);
   return (
     <MobileShell>
       <div className="flex min-h-[780px] flex-col px-6 pt-8">
         <Logo />
-        <div className="relative mt-10 overflow-hidden rounded-3xl bg-brand p-6 text-primary-foreground">
+        <div className="relative mt-8 overflow-hidden rounded-3xl bg-brand p-6 text-primary-foreground">
           <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-card/10" />
           <p className="text-xs font-semibold uppercase tracking-widest opacity-80">Approved in minutes</p>
           <p className="mt-2 text-4xl font-extrabold tnum">{inr(75000)}</p>
@@ -54,9 +68,9 @@ function Welcome() {
             {[[ShieldCheck, "RBI-compliant"], [Clock, "Quick review"], [Lock, "Secure KYC"]].map(([I, t]) => { const Ic = I as typeof Lock; return <div key={t as string} className="rounded-xl bg-card/10 p-2.5"><Ic className="mx-auto mb-1 h-4 w-4" />{t as string}</div>; })}
           </div>
         </div>
-        <h1 className="mt-10 text-3xl font-extrabold leading-tight text-navy">Welcome to Speed Money</h1>
-        <p className="mt-2 text-lg font-medium text-primary">Financial support when you need it.</p>
-        <p className="mt-2 text-sm text-muted-foreground">Apply for loans digitally with a simple and secure application.</p>
+        <h1 className="mt-8 text-3xl font-extrabold leading-tight text-navy">Welcome to Speed<span className="text-emerald-600">Money+</span></h1>
+        <p className="mt-2 text-sm font-semibold tracking-wide uppercase text-emerald-600">Your Finance. Our Expertise. Your Growth.</p>
+        <p className="mt-2 text-sm text-muted-foreground">Apply for instant loans digitally with a simple and secure application.</p>
         <div className="mt-auto space-y-4 pb-6 pt-8">
           <Go s="login">Get Started <ArrowRight className="h-5 w-5" /></Go>
           <p className="text-center text-sm text-muted-foreground">Already a user? <CLink s="login" className="font-semibold text-primary">Login</CLink></p>
@@ -66,29 +80,120 @@ function Welcome() {
   );
 }
 
+function formatPhone(digits: string) {
+  const d = digits.replace(/\D/g, "").slice(0, 10);
+  if (d.length > 5) {
+    return `${d.slice(0, 5)} ${d.slice(5)}`;
+  }
+  return d;
+}
+
+function formatFullPhone(phone: string) {
+  const clean = phone.replace(/\D/g, "");
+  if (clean.length === 12 && clean.startsWith("91")) {
+    const d = clean.slice(2);
+    return `+91 ${d.slice(0, 5)} ${d.slice(5)}`;
+  }
+  if (clean.length === 10) {
+    return `+91 ${clean.slice(0, 5)} ${clean.slice(5)}`;
+  }
+  return phone;
+}
+
 /* 03 */
 function Login() {
   const [m, setM] = useState("");
+  const [auth, setAuth] = useState<AuthState>(getAuthState());
   const ref = useRef<HTMLInputElement>(null);
   const nav = useNavigate();
-  // Sync from the DOM input on mount so digits typed before hydration still count.
-  useEffect(() => { if (ref.current) setM(ref.current.value.replace(/\D/g, "").slice(0, 10)); }, []);
+
+  useEffect(() => subscribeAuth(setAuth), []);
+  useEffect(() => {
+    const session = checkSession();
+    if (session.valid) {
+      nav({ to: "/app/$screen", params: { screen: "home" } });
+    }
+  }, [nav]);
+  useEffect(() => {
+    if (ref.current) {
+      const d = ref.current.value.replace(/\D/g, "").slice(0, 10);
+      setM(d);
+      ref.current.value = formatPhone(d);
+    }
+  }, []);
+
+  const handleContinue = async () => {
+    if (m.length !== 10 || auth.isLoading) return;
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    try {
+      Keyboard.hide().catch(() => {});
+    } catch {}
+    const res = await sendOtp(m);
+    if (res.success) {
+      nav({ to: "/app/$screen", params: { screen: "otp" } });
+    }
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (m.length === 10 && !auth.isLoading) {
+      handleContinue();
+    }
+  };
+
   return (
     <MobileShell>
-      <div className="flex min-h-[780px] flex-col px-6 pt-6">
+      <form onSubmit={handleFormSubmit} className="flex min-h-[780px] flex-col px-6 pt-6">
         <Back to="welcome" />
-        <h1 className="mt-8 text-2xl font-extrabold text-navy">Welcome to Speed Money</h1>
+        <h1 className="mt-8 text-2xl font-extrabold text-navy">Welcome to Speed<span className="text-emerald-600">Money+</span></h1>
         <p className="mt-1 text-sm text-muted-foreground">Enter your mobile number</p>
         <div className="mt-8 flex gap-2">
           <div className="flex h-14 items-center gap-1.5 rounded-xl border border-input bg-card px-4 text-sm font-semibold text-navy">🇮🇳 +91</div>
-          <Input ref={ref} autoFocus inputMode="numeric" defaultValue={m} onInput={(e) => { const v = e.currentTarget.value.replace(/\D/g, "").slice(0, 10); e.currentTarget.value = v; setM(v); }} placeholder="98765 43210" className="h-14 text-base font-semibold tracking-wider" />
+          <Input
+            ref={ref}
+            autoFocus
+            inputMode="numeric"
+            maxLength={11}
+            defaultValue={formatPhone(m)}
+            onInput={(e) => {
+              const raw = e.currentTarget.value.replace(/\D/g, "").slice(0, 10);
+              setM(raw);
+              e.currentTarget.value = formatPhone(raw);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (m.length === 10 && !auth.isLoading) {
+                  e.currentTarget.blur();
+                  handleContinue();
+                }
+              }
+            }}
+            placeholder="98765 43210"
+            className="h-14 text-base font-semibold tracking-wider"
+          />
         </div>
         <p className="mt-3 text-xs text-muted-foreground">We'll send you an OTP to verify your number.</p>
+        {auth.error && (
+          <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700 animate-in fade-in">
+            {auth.error}
+          </div>
+        )}
         <div className="mt-auto space-y-4 pb-6">
-          <Button full size="lg" disabled={m.length !== 10} onClick={() => nav({ to: "/app/$screen", params: { screen: "otp" } })}>Continue <ArrowRight className="h-5 w-5" /></Button>
-          <p className="text-center text-[11px] text-muted-foreground">By continuing you agree to our <span className="font-semibold text-primary">Terms</span> & <span className="font-semibold text-primary">Privacy Policy</span></p>
+          <Button type="submit" full size="lg" disabled={m.length !== 10 || auth.isLoading}>
+            {auth.isLoading ? (
+              <><Loader2 className="h-5 w-5 animate-spin" /> Sending OTP...</>
+            ) : (
+              <>Continue <ArrowRight className="h-5 w-5" /></>
+            )}
+          </Button>
+          <p className="text-center text-[11px] text-muted-foreground">
+            By continuing you agree to our <span className="font-semibold text-primary">Terms</span> & <span className="font-semibold text-primary">Privacy Policy</span>
+          </p>
         </div>
-      </div>
+      </form>
     </MobileShell>
   );
 }
@@ -96,21 +201,116 @@ function Login() {
 /* 04 */
 function Otp() {
   const [t, reset] = useCountdown(30);
-  const [state, setState] = useState<"idle" | "loading">("idle");
-  const [done, setDone] = useState(false);
+  const [code, setCode] = useState("");
+  const [auth, setAuth] = useState<AuthState>(getAuthState());
   const nav = useNavigate();
+
+  useEffect(() => subscribeAuth(setAuth), []);
+
+  // Auto-open keyboard when arriving on OTP page
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        Keyboard.show().catch(() => {});
+      } catch {}
+    }, 150);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Auto-navigate if background Firebase verification succeeds
+  useEffect(() => {
+    if (auth.isAuthenticated) {
+      nav({ to: "/app/$screen", params: { screen: "home" } });
+    }
+  }, [auth.isAuthenticated, nav]);
+
+  const handleVerify = async (codeToVerify = code) => {
+    if (codeToVerify.length !== 6 || auth.isLoading) return;
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    try {
+      Keyboard.hide().catch(() => {});
+    } catch {}
+    const res = await verifyOtp(codeToVerify);
+    if (res.success) {
+      nav({ to: "/app/$screen", params: { screen: "home" } });
+    }
+  };
+
+  // WebOTP API: automatically retrieve SMS OTP on Android
+  useEffect(() => {
+    if (typeof window !== "undefined" && "OTPCredential" in window) {
+      const ac = new AbortController();
+      (navigator.credentials as any)
+        ?.get({
+          otp: { transport: ["sms"] },
+          signal: ac.signal,
+        })
+        .then((credential: any) => {
+          if (credential && credential.code) {
+            const digits = credential.code.replace(/\D/g, "").slice(0, 6);
+            if (digits.length === 6) {
+              setCode(digits);
+              if (document.activeElement instanceof HTMLElement) {
+                document.activeElement.blur();
+              }
+              handleVerify(digits);
+            }
+          }
+        })
+        .catch(() => {});
+      return () => ac.abort();
+    }
+  }, []);
+
+  const handleResend = async () => {
+    reset();
+    await resendOtp();
+  };
+
   return (
     <MobileShell>
       <div className="flex min-h-[780px] flex-col px-6 pt-6">
         <Back to="login" />
         <h1 className="mt-8 text-2xl font-extrabold text-navy">Verify your number</h1>
-        <p className="mt-1 text-sm text-muted-foreground">OTP sent to +91 98765 43210</p>
-        <div className="mt-8"><OtpInput onComplete={() => setDone(true)} /></div>
-        <p className="mt-4 text-sm text-muted-foreground">{t > 0 ? <>Resend OTP in <span className="font-semibold text-navy tnum">00:{String(t).padStart(2, "0")}</span></> : <button onClick={reset} className="font-semibold text-primary">Resend OTP</button>}</p>
-        <p className="mt-2 text-xs text-muted-foreground">Prototype: enter any 6 digits.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          OTP sent to <span className="font-semibold text-navy">{auth.phoneNumber ? formatFullPhone(auth.phoneNumber) : "+91 98765 43210"}</span>
+        </p>
+        <div className="mt-8">
+          <OtpInput
+            value={code}
+            onChange={setCode}
+            onComplete={(val) => {
+              setCode(val);
+              handleVerify(val);
+            }}
+          />
+        </div>
+        {auth.error && (
+          <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700 animate-in fade-in">
+            {auth.error}
+          </div>
+        )}
+        <p className="mt-4 text-sm text-muted-foreground">
+          {t > 0 ? (
+            <>Resend OTP in <span className="font-semibold text-navy tnum">00:{String(t).padStart(2, "0")}</span></>
+          ) : (
+            <button onClick={handleResend} className="font-semibold text-primary">Resend OTP</button>
+          )}
+        </p>
         <div className="mt-auto pb-6">
-          <Button full size="lg" disabled={!done || state === "loading"} onClick={() => { setState("loading"); setTimeout(() => nav({ to: "/app/$screen", params: { screen: "home" } }), 900); }}>
-            {state === "loading" ? <><Loader2 className="h-5 w-5 animate-spin" /> Verifying</> : <>Verify <ArrowRight className="h-5 w-5" /></>}
+          <Button
+            full
+            size="lg"
+            disabled={code.length !== 6 || auth.isLoading}
+            onClick={() => handleVerify()}
+          >
+            {auth.isLoading ? (
+              <><Loader2 className="h-5 w-5 animate-spin" /> Verifying...</>
+            ) : (
+              <>Verify <ArrowRight className="h-5 w-5" /></>
+            )}
           </Button>
         </div>
       </div>
@@ -142,7 +342,7 @@ function Greeting({ sub }: { sub: string }) {
 function HomeActive() {
   return (
     <MobileShell nav={<Nav a="home" />}>
-      <Greeting sub="Welcome back to Speed Money" />
+      <Greeting sub="Welcome back to SpeedMoney+" />
       <Page className="mt-5">
         <div className="relative overflow-hidden rounded-3xl bg-brand p-5 text-primary-foreground shadow-lift">
           <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-card/10" />
@@ -156,7 +356,7 @@ function HomeActive() {
           <p className="mt-1.5 text-[11px] opacity-75">4 of 12 EMIs paid</p>
           <CLink s="pay" className="mt-4 flex h-12 items-center justify-center gap-2 rounded-xl bg-card text-sm font-bold text-primary">Pay EMI <ArrowRight className="h-4 w-4" /></CLink>
         </div>
-        <QuickActions items={[[PlusCircle, "Apply Loan", "loans"], [CalendarDays, "EMI Schedule", "emi-schedule"], [FileText, "Loan Details", "active-loan"], [History, "Payment History", "payment-history"]]} />
+        <QuickActions items={[[PlusCircle, "Apply Loan", "loans"], [CalendarDays, "EMI Schedule", "emi-schedule"], [FileText, "Loan Details", "loan-details"], [History, "Payment History", "payment-history"]]} />
         <div className="flex items-center justify-between pt-2"><h2 className="font-bold text-navy">Recent Activity</h2><CLink s="payment-history" className="text-xs font-semibold text-primary">See all</CLink></div>
         <Card className="divide-y divide-border px-4">
           {payments.slice(0, 3).map((p) => (
@@ -167,30 +367,6 @@ function HomeActive() {
             </div>
           ))}
         </Card>
-        <CLink s="home-new" className="block text-center text-[11px] text-muted-foreground underline">Preview: no active loan state</CLink>
-      </Page>
-    </MobileShell>
-  );
-}
-
-/* 06 */
-function HomeNew() {
-  return (
-    <MobileShell nav={<Nav a="home" />}>
-      <Greeting sub="Ready when you are" />
-      <Page className="mt-5">
-        <Card className="overflow-hidden p-0">
-          <div className="bg-soft p-5">
-            <IconTile icon={Wallet} />
-            <h2 className="mt-4 text-xl font-bold text-navy">Apply for a loan that fits your needs.</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Up to ₹3,50,000 · Digital application · Quick review</p>
-          </div>
-          <div className="p-4"><Go s="loans">Apply for Loan <ArrowRight className="h-5 w-5" /></Go></div>
-        </Card>
-        <QuickActions items={[[PlusCircle, "Apply Loan", "loans"], [Calculator, "Check Eligibility", "calculator"], [Headphones, "Support", "support"]]} />
-        <h2 className="pt-2 font-bold text-navy">Recent Activity</h2>
-        <Card><EmptyState icon={History} title="No recent activity" sub="Your loan and payment updates will appear here." /></Card>
-        <CLink s="home" className="block text-center text-[11px] text-muted-foreground underline">Preview: active loan state</CLink>
       </Page>
     </MobileShell>
   );
@@ -271,29 +447,26 @@ function CalculatorScreen() {
 /* 10 */
 const steps = [
   ["Personal Details", "Name, date of birth and address", "personal"],
-  ["Employment Details", "Income and work information", "employment"],
-  ["Bank Details", "Account for disbursement", "bank"],
-  ["KYC Verification", "PAN, Aadhaar, selfie, signature", "kyc"],
-  ["Document Upload", "Statements and proofs", "documents"],
-  ["Review & Submit", "Confirm and submit", "review"],
+  ["KYC Verification", "PAN, Aadhaar and identity check", "kyc"],
+  ["Review & Submit", "Confirm and submit application", "review"],
 ];
 function Apply() {
   return (
     <MobileShell>
       <AppHeader title="Loan Application" subtitle="Personal & Emergency Loan · ₹50,000" back={<Back to="loan-details" />} />
       <Page>
-        <Card className="p-4"><div className="flex justify-between text-xs font-semibold"><span className="text-navy">2 of 6 completed</span><span className="text-primary">33%</span></div><Progress value={33} className="mt-2" /></Card>
+        <Card className="p-4"><div className="flex justify-between text-xs font-semibold"><span className="text-navy">1 of 3 completed</span><span className="text-primary">33%</span></div><Progress value={33} className="mt-2" /></Card>
         <Card className="divide-y divide-border">
           {steps.map(([t, d, s], i) => (
             <CLink key={s} s={s} className="flex items-center gap-4 p-4">
-              <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-bold", i < 2 ? "bg-success text-primary-foreground" : i === 2 ? "bg-primary text-primary-foreground ring-4 ring-primary/15" : "bg-muted text-muted-foreground")}>{i < 2 ? <Check className="h-4 w-4" /> : i + 1}</span>
+              <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-bold", i < 1 ? "bg-success text-primary-foreground" : i === 1 ? "bg-primary text-primary-foreground ring-4 ring-primary/15" : "bg-muted text-muted-foreground")}>{i < 1 ? <Check className="h-4 w-4" /> : i + 1}</span>
               <div className="flex-1"><p className="text-sm font-semibold text-navy">{t}</p><p className="text-xs text-muted-foreground">{d}</p></div>
-              {i < 2 ? <Badge>Completed</Badge> : i === 2 ? <Badge tone="info">In progress</Badge> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+              {i < 1 ? <Badge>Completed</Badge> : i === 1 ? <Badge tone="info">In progress</Badge> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
             </CLink>
           ))}
         </Card>
       </Page>
-      <Footer><Go s="bank">Continue Application <ArrowRight className="h-5 w-5" /></Go></Footer>
+      <Footer><Go s="personal">Continue Application <ArrowRight className="h-5 w-5" /></Go></Footer>
     </MobileShell>
   );
 }
@@ -370,55 +543,25 @@ function Personal() {
     </MobileShell>
   );
 }
-const Employment = () => (
-  <FormStep title="Employment Details" step={2} back="personal" next="bank">
-    <Field label="Employment Type"><Select options={["Salaried", "Self-employed", "Business owner", "Farmer"]} /></Field>
-    <Field label="Company / Business Name"><Input defaultValue="Malabar Traders Pvt Ltd" /></Field>
-    <Field label="Monthly Income"><Input defaultValue="₹32,000" /></Field>
-    <Field label="Work Experience"><Select options={["Less than 1 year", "1 – 3 years", "3 – 5 years", "5+ years"]} /></Field>
-    <Field label="Existing Obligations" hint="Total monthly EMIs on other loans"><Input defaultValue="₹0" /></Field>
-  </FormStep>
-);
-const Bank = () => (
-  <FormStep title="Bank Details" step={3} back="employment" next="kyc">
-    <Field label="Account Holder Name"><Input defaultValue="HARUN R" /></Field>
-    <Field label="Account Number"><Input inputMode="numeric" defaultValue="50100248193021" /></Field>
-    <Field label="Confirm Account Number"><Input inputMode="numeric" defaultValue="50100248193021" /></Field>
-    <Field label="IFSC Code"><Input defaultValue="HDFC0001234" className="uppercase" /></Field>
-    <Field label="Bank Name"><Input defaultValue="HDFC Bank, Edappally" /></Field>
-    <div className="flex gap-3 rounded-xl bg-soft p-4"><Lock className="h-5 w-5 shrink-0 text-primary" /><p className="text-xs text-navy">Your bank details are encrypted and used only to disburse your loan and set up repayments.</p></div>
-  </FormStep>
-);
 
 /* 14 */
 function Kyc() {
-  const items: [typeof IdCard, string, string, string][] = [[IdCard, "PAN Card", "Verified", "View"], [Fingerprint, "Aadhaar / KYC Document", "Required", "Verify"], [Camera, "Selfie", "Not Completed", "Upload"], [PenLine, "Signature", "Not Completed", "Upload"]];
+  const items: [typeof IdCard, string, string, string][] = [
+    [IdCard, "PAN Card", "Verified", "View"],
+    [Fingerprint, "Aadhaar / KYC Document", "Verified", "View"],
+    [Camera, "Selfie", "Completed", "View"],
+    [PenLine, "Signature", "Completed", "View"]
+  ];
   return (
-    <FormStep title="Identity Verification" step={4} back="bank" next="documents" cta="Continue">
+    <FormStep title="Identity Verification" step={2} back="personal" next="review" cta="Continue to Review">
       {items.map(([I, t, s, a]) => (
         <Card key={t} className="flex items-center gap-3 p-4">
-          <IconTile icon={I} tone={s === "Verified" ? "success" : "info"} />
+          <IconTile icon={I} tone={s === "Verified" || s === "Completed" ? "success" : "info"} />
           <div className="flex-1"><p className="text-sm font-semibold text-navy">{t}</p><div className="mt-1"><Badge>{s}</Badge></div></div>
           <button className={btn(a === "View" ? "outline" : "secondary", "sm")}>{a}</button>
         </Card>
       ))}
       <div className="flex items-center gap-2 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4 text-success" />Your information is securely handled.</div>
-    </FormStep>
-  );
-}
-
-/* 15 */
-function Documents() {
-  const [lap, setLap] = useState(false);
-  return (
-    <FormStep title="Upload Documents" step={5} back="kyc" next="review" cta="Continue">
-      <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={lap} onChange={(e) => setLap(e.target.checked)} className="accent-primary" /> Preview as Loan Against Property</label>
-      <UploadCard title="PAN Card" initial="done" />
-      <UploadCard title="Aadhaar / KYC Document" initial="done" />
-      <UploadCard title="Bank Statement" />
-      <UploadCard title="Selfie" sub="JPG / PNG" />
-      <UploadCard title="Signature" sub="JPG / PNG" />
-      {lap && <><UploadCard title="Property Ownership Document" /><UploadCard title="Address Proof" /></>}
     </FormStep>
   );
 }
@@ -430,16 +573,13 @@ function Review() {
   const sec: [string, [string, string][]][] = [
     ["Loan Details", [["Product", "Personal & Emergency"], ["Amount", "₹50,000"], ["Tenure", "12 months"]]],
     ["Personal Details", [["Name", "Harun R"], ["DOB", "14 Apr 1992"], ["City", "Kochi, Kerala"]]],
-    ["Employment Details", [["Type", "Salaried"], ["Monthly income", "₹32,000"]]],
-    ["Bank Details", [["Bank", "HDFC Bank"], ["Account", "XXXX XXXX 3021"], ["IFSC", "HDFC0001234"]]],
-    ["KYC Details", [["PAN", "Verified"], ["Aadhaar", "Verified"]]],
-    ["Documents", [["Uploaded", "5 of 5"]]],
+    ["KYC Details", [["PAN", "Verified"], ["Aadhaar", "Verified"], ["Selfie", "Verified"]]],
   ];
   const [loading, setLoading] = useState(false);
   return (
     <MobileShell>
-      <AppHeader title="Review Application" back={<Back to="documents" />} />
-      <StepBar step={6} />
+      <AppHeader title="Review Application" back={<Back to="kyc" />} />
+      <StepBar step={3} />
       <Page className="mt-5">
         {sec.map(([t, rows]) => (
           <Card key={t} className="px-4 pt-3">
@@ -477,44 +617,6 @@ function Tracking() {
       <Page>
         <Card className="p-5"><Timeline items={[{ label: "Application Submitted", sub: "28 Sep 2026", state: "done" }, { label: "Documents Received", sub: "28 Sep 2026", state: "done" }, { label: "Under Review", sub: "Credit team is reviewing", state: "current" }, { label: "Approval", state: "todo" }, { label: "Disbursement", state: "todo" }]} /></Card>
         <div className="flex gap-3 rounded-2xl border border-warning/30 bg-warning-soft p-4"><Clock className="h-5 w-5 shrink-0 text-warning" /><div><p className="text-sm font-semibold text-navy">Under review</p><p className="text-xs text-muted-foreground">Usually completed within 24 working hours. We'll notify you on any update.</p></div></div>
-        <CLink s="approved" className="block text-center text-[11px] text-muted-foreground underline">Preview: approved state</CLink>
-      </Page>
-    </MobileShell>
-  );
-}
-
-/* 19 */
-function Approved() {
-  return (
-    <MobileShell>
-      <Page className="pt-14">
-        <ResultState tone="success" icon={Check} title="Loan Approved" sub="Congratulations! Your loan will be disbursed to your bank account shortly." />
-        <Card className="mt-6 divide-y divide-border px-4 py-1">
-          <KV k="Approved Amount" v={inr(50000)} strong /><KV k="Interest Rate" v="18% p.a." /><KV k="Tenure" v="12 Months" /><KV k="Estimated EMI" v={inr(4620)} /><KV k="First Due Date" v="05 Oct 2026" />
-        </Card>
-      </Page>
-      <Footer><Go s="active-loan">View Loan Details</Go></Footer>
-    </MobileShell>
-  );
-}
-
-/* 20 */
-function ActiveLoan() {
-  return (
-    <MobileShell>
-      <AppHeader title="Active Loan" subtitle={customer.loanId} back={<Back to="home" />} />
-      <Page>
-        <Card className="p-5">
-          <div className="flex items-center justify-between"><span className="text-sm font-semibold text-navy">Personal & Emergency Loan</span><Badge>Active</Badge></div>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            {[["Loan Amount", inr(50000)], ["Outstanding", inr(38500)], ["Next EMI", inr(4250)], ["Due Date", "05 Oct 2026"]].map(([k, v]) => <div key={k} className="rounded-xl bg-muted/70 p-3"><p className="text-[11px] text-muted-foreground">{k}</p><p className="text-base font-bold text-navy tnum">{v}</p></div>)}
-          </div>
-          <div className="mt-5 flex justify-between text-xs"><span className="font-semibold text-navy">Repayment progress</span><span className="text-muted-foreground">{inr(11500)} repaid</span></div>
-          <Progress value={33} className="mt-2" />
-        </Card>
-        <Card className="divide-y divide-border px-4 py-1"><KV k="Interest rate" v="18% p.a." /><KV k="Tenure" v="12 months" /><KV k="Disbursed on" v="02 Jun 2026" /><KV k="Account" v="HDFC XXXX 3021" /></Card>
-        <Go s="pay">Pay EMI <ArrowRight className="h-5 w-5" /></Go>
-        <div className="grid grid-cols-2 gap-3"><CLink s="emi-schedule" className={btn("outline", "md", true)}><CalendarDays className="h-4 w-4" />EMI Schedule</CLink><CLink s="profile" className={btn("outline", "md", true)}><FileText className="h-4 w-4" />Loan Documents</CLink></div>
       </Page>
     </MobileShell>
   );
@@ -529,7 +631,7 @@ function EmiSchedule() {
         <div className="grid grid-cols-3 gap-3">{[["Total EMIs", 12, "text-navy"], ["Paid", 4, "text-success"], ["Remaining", 8, "text-primary"]].map(([k, v, c]) => <Card key={k as string} className="p-3 text-center"><p className={cn("text-2xl font-extrabold", c as string)}>{v}</p><p className="text-[11px] text-muted-foreground">{k}</p></Card>)}</div>
         <Card className="divide-y divide-border">
           {emis.map((e) => (
-            <CLink key={e.no} s="emi-details" className={cn("flex items-center gap-3 px-4 py-3.5", e.status === "Due" && "bg-warning-soft/60")}>
+            <CLink key={e.no} s={e.status === "Due" ? "pay" : "emi-schedule"} className={cn("flex items-center gap-3 px-4 py-3.5", e.status === "Due" && "bg-warning-soft/60 hover:opacity-90")}>
               <span className={cn("grid h-9 w-9 place-items-center rounded-full text-xs font-bold", e.status === "Paid" ? "bg-success-soft text-success" : e.status === "Due" ? "bg-warning text-primary-foreground" : "bg-muted text-muted-foreground")}>{e.status === "Paid" ? <Check className="h-4 w-4" /> : String(e.no).padStart(2, "0")}</span>
               <div className="flex-1"><p className="text-sm font-semibold text-navy">EMI #{String(e.no).padStart(2, "0")}</p><p className="text-xs text-muted-foreground">{e.date}</p></div>
               <div className="text-right"><p className="text-sm font-bold text-navy tnum">{inr(e.amount)}</p><Badge>{e.status}</Badge></div>
@@ -541,20 +643,6 @@ function EmiSchedule() {
   );
 }
 
-/* 22 */
-function EmiDetails() {
-  return (
-    <MobileShell>
-      <AppHeader title="EMI #05" back={<Back to="emi-schedule" />} right={<Badge>Due</Badge>} />
-      <Page>
-        <Card className="p-5 text-center"><p className="text-xs text-muted-foreground">Amount</p><p className="text-4xl font-extrabold text-navy tnum">{inr(4250)}</p><p className="mt-1 text-sm text-warning">Due Date: 05 Oct 2026</p></Card>
-        <Card className="divide-y divide-border px-4 py-1"><KV k="Principal" v={inr(3500)} /><KV k="Interest" v={inr(750)} /><KV k="Penalty" v={inr(0)} /><KV k="Total Payable" v={inr(4250)} strong /></Card>
-      </Page>
-      <Footer><Go s="pay">Pay EMI <ArrowRight className="h-5 w-5" /></Go></Footer>
-    </MobileShell>
-  );
-}
-
 /* 23 */
 function Pay() {
   const [method, setMethod] = useState("gpay");
@@ -562,7 +650,7 @@ function Pay() {
   const nav = useNavigate();
   return (
     <MobileShell>
-      <AppHeader title="Pay EMI" back={<Back to="emi-details" />} />
+      <AppHeader title="Pay EMI" back={<Back to="emi-schedule" />} />
       <Page>
         <Card className="p-5 text-center"><p className="text-xs text-muted-foreground">EMI #05 · Due 05 Oct 2026</p><p className="mt-1 text-4xl font-extrabold text-navy tnum">{inr(4250)}</p></Card>
         <h3 className="pt-2 text-sm font-bold text-navy">Pay using UPI</h3>
@@ -661,24 +749,57 @@ function Notifications() {
 
 /* 28 */
 function Profile() {
+  const [auth, setAuth] = useState<AuthState>(getAuthState());
+  const nav = useNavigate();
+  useEffect(() => subscribeAuth(setAuth), []);
+
   const items: [typeof User, string, string][] = [
     [User, "Personal Details", "personal"],
     [HelpCircle, "Help & Support", "support"],
     [Lock, "Privacy Policy", "profile"],
     [FileText, "Terms & Conditions", "profile"],
   ];
+
+  const handleLogout = async () => {
+    await logout();
+    nav({ to: "/app/$screen", params: { screen: "welcome" } });
+  };
+
+  const displayPhone = auth.phoneNumber
+    ? formatFullPhone(auth.phoneNumber)
+    : (typeof window !== "undefined" && localStorage.getItem("sm_user_phone")
+        ? formatFullPhone(localStorage.getItem("sm_user_phone")!)
+        : customer.mobile);
+
   return (
     <MobileShell nav={<Nav a="profile" />}>
       <AppHeader title="Profile" />
       <Page>
         <Card className="flex items-center gap-4 p-5">
-          <div className="grid h-14 w-14 place-items-center rounded-full bg-brand text-lg font-bold text-primary-foreground">HR</div>
-          <div className="flex-1"><p className="font-bold text-navy">{customer.name}</p><p className="text-xs text-muted-foreground">{customer.mobile}</p><div className="mt-1"><Badge tone="success">KYC Verified</Badge></div></div>
+          <div className="grid h-14 w-14 place-items-center rounded-full bg-brand text-lg font-bold text-primary-foreground">
+            {customer.name.slice(0, 2).toUpperCase()}
+          </div>
+          <div className="flex-1">
+            <p className="font-bold text-navy">{customer.name}</p>
+            <p className="text-sm font-semibold tracking-wide text-navy/80">{displayPhone}</p>
+          </div>
         </Card>
         <Card className="divide-y divide-border">
-          {items.map(([I, l, s]) => <CLink key={l} s={s} className="flex items-center gap-3 px-4 py-3.5"><I className="h-5 w-5 text-primary" /><span className="flex-1 text-sm font-medium text-navy">{l}</span><ChevronRight className="h-4 w-4 text-muted-foreground" /></CLink>)}
+          {items.map(([I, l, s]) => (
+            <CLink key={l} s={s} className="flex items-center gap-3 px-4 py-3.5">
+              <I className="h-5 w-5 text-primary" />
+              <span className="flex-1 text-sm font-medium text-navy">{l}</span>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </CLink>
+          ))}
         </Card>
-        <CLink s="welcome" className={cn(btn("outline", "md", true), "text-destructive")}><LogOut className="h-4 w-4" />Logout</CLink>
+        <button
+          onClick={handleLogout}
+          className={cn(btn("outline", "md", true), "text-destructive flex items-center justify-center gap-2")}
+        >
+          <LogOut className="h-4 w-4" />
+          Logout
+        </button>
       </Page>
     </MobileShell>
   );
@@ -723,15 +844,28 @@ function CustReceipt() {
 }
 
 export const customerScreens: Record<string, { c: () => ReactNode; t: string }> = {
-  splash: { c: Splash, t: "Splash" }, welcome: { c: Welcome, t: "Welcome" }, login: { c: Login, t: "Mobile Login" }, otp: { c: Otp, t: "OTP Verification" },
-  home: { c: HomeActive, t: "Home — Active Loan" }, "home-new": { c: HomeNew, t: "Home — No Active Loan" }, loans: { c: Loans, t: "Loans" },
-  "loan-details": { c: LoanDetails, t: "Loan Details" }, calculator: { c: CalculatorScreen, t: "Loan Calculator" }, apply: { c: Apply, t: "Application Steps" },
-  personal: { c: Personal, t: "Personal Details" }, employment: { c: Employment, t: "Employment Details" }, bank: { c: Bank, t: "Bank Details" },
-  kyc: { c: Kyc, t: "KYC Verification" }, documents: { c: Documents, t: "Document Upload" }, review: { c: Review, t: "Application Review" },
-  submitted: { c: Submitted, t: "Application Submitted" }, tracking: { c: Tracking, t: "Application Tracking" }, approved: { c: Approved, t: "Loan Approved" },
-  "active-loan": { c: ActiveLoan, t: "Active Loan" }, "emi-schedule": { c: EmiSchedule, t: "EMI Schedule" }, "emi-details": { c: EmiDetails, t: "EMI Details" },
-  pay: { c: Pay, t: "Pay EMI" }, "payment-success": { c: PaySuccess, t: "Payment Success" }, "payment-failed": { c: PayFailed, t: "Payment Failed" },
-  "payment-history": { c: PayHistory, t: "Payment History" }, notifications: { c: Notifications, t: "Notifications" }, profile: { c: Profile, t: "Profile" },
-  support: { c: Support, t: "Help & Support" }, receipt: { c: CustReceipt, t: "Receipt" },
+  splash: { c: Splash, t: "Splash" },
+  welcome: { c: Welcome, t: "Welcome" },
+  login: { c: Login, t: "Mobile Login" },
+  otp: { c: Otp, t: "OTP Verification" },
+  home: { c: HomeActive, t: "Home" },
+  loans: { c: Loans, t: "Loans" },
+  "loan-details": { c: LoanDetails, t: "Loan Details" },
+  calculator: { c: CalculatorScreen, t: "Loan Calculator" },
+  apply: { c: Apply, t: "Application Steps" },
+  personal: { c: Personal, t: "Personal Details" },
+  kyc: { c: Kyc, t: "KYC Verification" },
+  review: { c: Review, t: "Application Review" },
+  submitted: { c: Submitted, t: "Application Submitted" },
+  tracking: { c: Tracking, t: "Application Tracking" },
+  "emi-schedule": { c: EmiSchedule, t: "EMI Schedule" },
+  pay: { c: Pay, t: "Pay EMI" },
+  "payment-success": { c: PaySuccess, t: "Payment Success" },
+  "payment-failed": { c: PayFailed, t: "Payment Failed" },
+  "payment-history": { c: PayHistory, t: "Payment History" },
+  notifications: { c: Notifications, t: "Notifications" },
+  profile: { c: Profile, t: "Profile" },
+  support: { c: Support, t: "Help & Support" },
+  receipt: { c: CustReceipt, t: "Receipt" },
 };
 export { Link };

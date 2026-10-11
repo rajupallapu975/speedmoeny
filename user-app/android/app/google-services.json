@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "976800983902",
+    "project_id": "v-max-df646",
+    "storage_bucket": "v-max-df646.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:976800983902:android:cedbb0b7d8651a95da3dcf",
+        "android_client_info": {
+          "package_name": "com.example.v_max"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAzg_XUUctNRMnOXaolAdM53EtcXRb0EjE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:976800983902:android:193ac8337e6ed85eda3dcf",
+        "android_client_info": {
+          "package_name": "com.speedmoney.user"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAzg_XUUctNRMnOXaolAdM53EtcXRb0EjE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

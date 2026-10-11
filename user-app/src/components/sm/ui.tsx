@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useRef, useState, useEffect, type ReactNode, type ComponentType } from "react";
 import { ArrowLeft, Check, Upload, FileText, Search, Eraser } from "lucide-react";
+import { Keyboard } from "@capacitor/keyboard";
 import { cn } from "@/lib/utils";
 
 /* ---------- navigation helpers ---------- */
@@ -15,16 +16,56 @@ export function ALink({ s, className, children }: { s: string; className?: strin
 }
 
 /* ---------- logo ---------- */
-export function Logo({ size = "md", light = false }: { size?: "sm" | "md" | "lg"; light?: boolean }) {
-  const box = size === "lg" ? "h-16 w-16 text-3xl rounded-2xl" : size === "sm" ? "h-8 w-8 text-base rounded-lg" : "h-10 w-10 text-lg rounded-xl";
+export function Logo({
+  size = "md",
+  light = false,
+  full = false,
+}: {
+  size?: "sm" | "md" | "lg";
+  light?: boolean;
+  full?: boolean;
+}) {
+  if (full || size === "lg") {
+    return (
+      <div className="flex flex-col items-center gap-2">
+        <img
+          src="/logo-icon.png"
+          alt="SpeedMoney+"
+          className={cn(
+            "object-contain rounded-2xl shadow-sm transition-transform",
+            size === "lg" ? "h-20 w-20" : "h-14 w-14",
+            light ? "bg-white p-1.5 shadow-md" : ""
+          )}
+        />
+        <div className="text-center">
+          <div className={cn("font-extrabold tracking-tight", size === "lg" ? "text-2xl" : "text-lg", light ? "text-primary-foreground" : "text-navy")}>
+            Speed<span className={light ? "text-emerald-300" : "text-emerald-600"}>Money+</span>
+          </div>
+          <p className={cn("text-[9px] font-bold tracking-widest uppercase", light ? "text-primary-foreground/80" : "text-muted-foreground")}>
+            Your Finance. Our Expertise. Your Growth.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const iconSize = size === "sm" ? "h-8 w-8" : "h-10 w-10";
   return (
     <div className="flex items-center gap-2.5">
-      <div className={cn("grid place-items-center font-extrabold", box, light ? "bg-card text-primary" : "bg-brand text-primary-foreground")}>
-        <span className="italic tracking-tighter">S</span>
+      <img
+        src="/logo-icon.png"
+        alt="SpeedMoney+"
+        className={cn(
+          "object-contain rounded-xl shadow-xs",
+          iconSize,
+          light ? "bg-white p-0.5" : ""
+        )}
+      />
+      <div className="leading-tight">
+        <span className={cn("font-extrabold tracking-tight", size === "sm" ? "text-base" : "text-lg", light ? "text-primary-foreground" : "text-navy")}>
+          Speed<span className={light ? "text-emerald-300" : "text-emerald-600"}>Money+</span>
+        </span>
       </div>
-      <span className={cn("font-extrabold tracking-tight", size === "lg" ? "text-3xl" : "text-lg", light ? "text-primary-foreground" : "text-navy")}>
-        Speed<span className={light ? "opacity-80" : "text-primary"}>Money</span>
-      </span>
     </div>
   );
 }
@@ -201,26 +242,118 @@ export function SearchBar({ placeholder = "Search" }: { placeholder?: string }) 
   );
 }
 
-export function OtpInput({ length = 6, onComplete }: { length?: number; onComplete?: (v: string) => void }) {
+export function OtpInput({
+  length = 6,
+  value,
+  onComplete,
+  onChange,
+  autoFocus = true,
+}: {
+  length?: number;
+  value?: string;
+  onComplete?: (v: string) => void;
+  onChange?: (v: string) => void;
+  autoFocus?: boolean;
+}) {
   const [vals, setVals] = useState<string[]>(Array(length).fill(""));
   const refs = useRef<(HTMLInputElement | null)[]>([]);
+
+  useEffect(() => {
+    if (value !== undefined) {
+      const arr = value.slice(0, length).split("").concat(Array(Math.max(0, length - value.length)).fill(""));
+      setVals(arr.slice(0, length));
+    }
+  }, [value, length]);
+
+  useEffect(() => {
+    if (autoFocus) {
+      const timer = setTimeout(() => {
+        refs.current[0]?.focus();
+        try {
+          Keyboard.show().catch(() => {});
+        } catch {}
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocus]);
+
+  const dismissKeyboard = () => {
+    refs.current.forEach((el) => el?.blur());
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    try {
+      Keyboard.hide().catch(() => {});
+    } catch {}
+  };
+
+  const handleFill = (digits: string) => {
+    const clean = digits.replace(/\D/g, "").slice(0, length);
+    const next = [...vals];
+    for (let i = 0; i < clean.length; i++) {
+      next[i] = clean[i];
+    }
+    setVals(next);
+    const joined = next.join("");
+    onChange?.(joined);
+    if (next.every(Boolean)) {
+      dismissKeyboard();
+      onComplete?.(joined);
+    } else {
+      const firstEmpty = next.findIndex((x) => !x);
+      if (firstEmpty !== -1) refs.current[firstEmpty]?.focus();
+    }
+  };
+
   return (
     <div className="flex justify-between gap-2">
       {vals.map((v, i) => (
         <input
           key={i}
-          ref={(el) => { refs.current[i] = el; }}
+          ref={(el) => {
+            refs.current[i] = el;
+          }}
+          autoFocus={autoFocus && i === 0}
           value={v}
           inputMode="numeric"
-          maxLength={1}
+          pattern="[0-9]*"
+          autoComplete={i === 0 ? "one-time-code" : "off"}
+          maxLength={i === 0 ? length : 1}
           onChange={(e) => {
-            const d = e.target.value.replace(/\D/g, "").slice(-1);
-            const next = [...vals]; next[i] = d; setVals(next);
-            if (d && i < length - 1) refs.current[i + 1]?.focus();
-            if (next.every(Boolean)) onComplete?.(next.join(""));
+            const raw = e.target.value;
+            const digitsOnly = raw.replace(/\D/g, "");
+            if (digitsOnly.length > 1) {
+              handleFill(digitsOnly);
+              return;
+            }
+            const d = digitsOnly.slice(-1);
+            const next = [...vals];
+            next[i] = d;
+            setVals(next);
+            const joined = next.join("");
+            onChange?.(joined);
+            if (d && i < length - 1) {
+              refs.current[i + 1]?.focus();
+            }
+            if (next.every(Boolean)) {
+              dismissKeyboard();
+              onComplete?.(joined);
+            }
           }}
-          onKeyDown={(e) => { if (e.key === "Backspace" && !v && i > 0) refs.current[i - 1]?.focus(); }}
-          className={cn("h-14 w-full rounded-xl border bg-card text-center text-xl font-bold text-navy outline-none focus:border-primary focus:ring-4 focus:ring-primary/10", v ? "border-primary" : "border-input")}
+          onPaste={(e) => {
+            e.preventDefault();
+            const pasted = e.clipboardData.getData("text");
+            handleFill(pasted);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Backspace" && !v && i > 0) {
+              refs.current[i - 1]?.focus();
+            }
+          }}
+          className={cn(
+            "h-14 w-full rounded-xl border bg-card text-center text-xl font-bold text-navy outline-none focus:border-primary focus:ring-4 focus:ring-primary/10",
+            v ? "border-primary" : "border-input"
+          )}
         />
       ))}
     </div>
