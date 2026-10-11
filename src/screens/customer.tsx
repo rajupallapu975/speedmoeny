@@ -28,7 +28,7 @@ const Go = ({ s, children, v = "primary" as const }: { s: string; children: Reac
 /* 01 */
 function Splash() {
   const nav = useNavigate();
-  useEffect(() => { const t = setTimeout(() => nav({ to: "/app/$screen", params: { screen: "welcome" } }), 2200); return () => clearTimeout(t); }, [nav]);
+  useEffect(() => { const t = setTimeout(() => nav({ to: "/app/$screen", params: { screen: "welcome" } }), 900); return () => clearTimeout(t); }, [nav]);
   return (
     <MobileShell className="bg-brand pb-0">
       <CLink s="welcome" className="flex min-h-[760px] flex-col items-center justify-center gap-6 text-center">
@@ -70,7 +70,10 @@ function Welcome() {
 /* 03 */
 function Login() {
   const [m, setM] = useState("");
+  const ref = useRef<HTMLInputElement>(null);
   const nav = useNavigate();
+  // Sync from the DOM input on mount so digits typed before hydration still count.
+  useEffect(() => { if (ref.current) setM(ref.current.value.replace(/\D/g, "").slice(0, 10)); }, []);
   return (
     <MobileShell>
       <div className="flex min-h-[780px] flex-col px-6 pt-6">
