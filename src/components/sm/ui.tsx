@@ -133,7 +133,7 @@ export function Field({ label, children, hint }: { label: string; children: Reac
   );
 }
 export const inputCls = "h-12 w-full rounded-xl border border-input bg-card px-4 text-sm text-navy outline-none placeholder:text-muted-foreground/70 focus:border-primary focus:ring-4 focus:ring-primary/10";
-export function Input(p: React.InputHTMLAttributes<HTMLInputElement>) {
+export function Input(p: React.ComponentPropsWithRef<"input">) {
   return <input {...p} className={cn(inputCls, p.className)} />;
 }
 export function Select({ options, ...p }: React.SelectHTMLAttributes<HTMLSelectElement> & { options: string[] }) {
