@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, Link } from "@tanstack/react-router";
 import {
   ArrowRight, Home, Wallet, CalendarDays, Bell, User, PlusCircle, FileText, History, ShieldCheck, Calculator, Headphones,
@@ -82,7 +82,7 @@ function Login() {
         <p className="mt-1 text-sm text-muted-foreground">Enter your mobile number</p>
         <div className="mt-8 flex gap-2">
           <div className="flex h-14 items-center gap-1.5 rounded-xl border border-input bg-card px-4 text-sm font-semibold text-navy">🇮🇳 +91</div>
-          <Input autoFocus inputMode="numeric" value={m} onChange={(e) => setM(e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="98765 43210" className="h-14 text-base font-semibold tracking-wider" />
+          <Input ref={ref} autoFocus inputMode="numeric" defaultValue={m} onInput={(e) => { const v = e.currentTarget.value.replace(/\D/g, "").slice(0, 10); e.currentTarget.value = v; setM(v); }} placeholder="98765 43210" className="h-14 text-base font-semibold tracking-wider" />
         </div>
         <p className="mt-3 text-xs text-muted-foreground">We'll send you an OTP to verify your number.</p>
         <div className="mt-auto space-y-4 pb-6">
